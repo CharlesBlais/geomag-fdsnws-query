@@ -1,0 +1,5 @@
+# Ignore python compile code
+*pyc
+
+# Ignore visual studio code
+vscode

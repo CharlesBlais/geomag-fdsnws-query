@@ -34,3 +34,14 @@ def is_common_traces(stream, meta_matches=None):
                     return False
     return True
     
+def order_stream(stream, components=['X', 'Y', 'Z', 'F']):
+    '''
+    Order all traces in the stream by the orientation
+    '''
+    from obspy import Stream
+
+    nstream = Stream()
+    for component in components:
+        nstream += stream.select(component=component)
+    return nstream
+    

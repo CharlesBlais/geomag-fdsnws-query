@@ -53,6 +53,7 @@ def write(stream, filename, **kwargs):
     for component in components:
         if not stream.select(component=component):
             raise ValueError('Missing trace with component %s' % component)
+    stream = lib.order_stream(stream, components=components)
 
     if not lib.is_common_traces(stream, meta_matches=['network', 'station', 'sampling_rate']):
         raise ValueError(
@@ -76,9 +77,6 @@ def _write_body(stream, resource):
     # make a copy of the stream before changing it
     # any trace manipulation are done by reference in obspy
     nstream = stream.copy()
-    # sort stream so that we have XYZF order
-    nstream.sort()
-
     starttime = nstream[0].meta.starttime
     endtime = nstream[0].meta.endtime
     sampling_rate = nstream[0].meta.sampling_rate
@@ -102,11 +100,11 @@ def _write_body(stream, resource):
             components.append(
                 nstream[idx][offset] if nstream[idx][offset] else NULL_VALUE
             )
-        resource.write("{station} {timestamp} {X} {Y} {Z} {F}".format(
+        resource.write("{station} {timestamp} {X} {Y} {Z} {F}\n".format(
             station=station,
             timestamp=timestamp,
-            X=components[0],
-            Y=components[1],
-            Z=components[2],
-            F=components[3]
+            X="%.2f"%components[0],
+            Y="%.2f"%components[1],
+            Z="%.2f"%components[2],
+            F="%.2f"%components[3]
         ))

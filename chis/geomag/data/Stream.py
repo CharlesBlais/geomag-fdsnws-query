@@ -19,12 +19,11 @@ class Stream(ObspyStream):
         the filename and keyword.
         '''
         import imp
-
         format_spec = kwargs.get('format', 'iaga2002').lower()
         try:
             fptr, pathname, description = imp.find_module('chis/geomag/data/formats/'+format_spec)
             write_format = imp.load_module('write', fptr, pathname, description)
             return write_format.write(self, filename, **kwargs)
         except ImportError:
-            super(Stream, self).write(filename, **kwargs)
+            super(Stream, self).write(self, filename, **kwargs)
             

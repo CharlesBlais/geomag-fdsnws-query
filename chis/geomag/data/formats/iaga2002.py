@@ -83,6 +83,14 @@ def write(stream, filename, inventory=None, source=None, **kwargs):
     if stream.count() != 4:
         raise ValueError("IAGA2002 format must have 4 components")
 
+    # We only support X, Y, Z, F
+    # validate required traces
+    components = ['X', 'Y', 'Z', 'F']
+    for component in components:
+        if not stream.select(component=component):
+            raise ValueError('Missing trace with component %s' % component)
+    stream = lib.order_stream(stream, components=components)
+
     if not lib.is_common_traces(stream, meta_matches=['network', 'station', 'sampling_rate']):
         raise ValueError(
             "All traces in the stream must come from the same station and sampling rate"
@@ -137,16 +145,12 @@ def _write_header(stream, resource, inventory, source):
      # through INTERMAGNET and acknowledgement templates can be found    |
      # at www.intermagnet.org                                            |
     '''
-    headers = _get_headers(stream, inventory, source)
-    response = []
-    for header in headers:
-        response.append(" %-23s %-44s|" % (header, headers[header]))
-
+    response = _get_headers(stream, inventory, source)
     response.extend([
-        '# DECBAS               000000 (Baseline declination value in        |',
-        '#                      tenths of minutes East (0-216,000)).         |'
+        ' # DECBAS                000000 (Baseline declination value in       |',
+        ' #                       tenths of minutes East (0-216,000)).        |'
     ])
-    resource.write('\r\n'.join(response))
+    resource.write('\r\n'.join(response) + '\r\n')
 
 
 def _get_headers(stream, inventory, source):
@@ -166,21 +170,20 @@ def _get_headers(stream, inventory, source):
     data_interval_type = DATA_INTERVAL_TYPES.get(stream[0].meta.channel[0], '')
     # the data type is based on the location[0]
     data_type = DATA_TYPES.get(stream[0].meta.location[0], '')
-
-    return {
-        "Format" : "IAGA-2002",
-        "Source of Data" : source,
-        "Station Name" : station.site.name if station else '',
-        "IAGA CODE" : stream[0].meta.station,
-        "Geodetic Latitude" : "%f" % station.latitude if station else '',
-        "Geodetic Longitude" : "%f" % station.longitude if station else '',
-        "Elevation" : "%f" % station.elevation if station else '',
-        "Reported": reported,
-        "Sensor Orientation": '',
-        "Digital Sampling" : '',
-        "Data Interval Type" : data_interval_type,
-        "Data Type" : data_type
-    }
+    return [
+        " %-23s %-44s|" % ("Format", "IAGA-2002"),
+        " %-23s %-44s|" % ("Source of Data", source),
+        " %-23s %-44s|" % ("Station Name", station.site.name),
+        " %-23s %-44s|" % ("IAGA CODE", stream[0].meta.station),
+        " %-23s %-44s|" % ("Geodetic Latitude", "%.3f" % station.latitude),
+        " %-23s %-44s|" % ("Geodetic Longitude", "%.3f" % station.longitude),
+        " %-23s %-44s|" % ("Elevation", "%.3f" % station.elevation),
+        " %-23s %-44s|" % ("Reported", reported),
+        " %-23s %-44s|" % ("Sensor Orientation", ''),
+        " %-23s %-44s|" % ("Digital Sampling", ''),
+        " %-23s %-44s|" % ("Data Interval Type", data_interval_type),
+        " %-23s %-44s|" % ("Data Type", data_type)
+    ]
 
 
 def _write_body(stream, resource):
@@ -196,13 +199,10 @@ def _write_body(stream, resource):
     # make a copy of the stream before changing it
     # any trace manipulation are done by reference in obspy
     nstream = stream.copy()
-    # sort stream so that we have XYZF order
-    nstream.sort()
-
-    starttime = nstream[0].meta.starttime
-    endtime = nstream[0].meta.endtime
-    sampling_rate = nstream[0].meta.sampling_rate
-    station = nstream[0].meta.station
+    starttime = nstream[0].stats.starttime
+    endtime = nstream[0].stats.endtime
+    sampling_rate = nstream[0].stats.sampling_rate
+    station = nstream[0].stats.station
     components = []
     for trace in nstream:
         starttime = min(trace.meta.starttime, starttime)
@@ -213,7 +213,7 @@ def _write_body(stream, resource):
             trace.data = trace.data.filled(fill_value=NULL_VALUE)
 
     resource.write(
-        "DATE       TIME         DOY     %3s%1s     %3s%1s      %3s%1s      %3s%1s   |\r\n" % (
+        "DATE       TIME         DOY     %3s%1s      %3s%1s      %3s%1s      %3s%1s   |\r\n" % (
             station, components[0],
             station, components[1],
             station, components[2],
@@ -231,8 +231,9 @@ def _write_body(stream, resource):
             components.append(
                 nstream[idx][offset] if nstream[idx][offset] else NULL_VALUE
             )
-        resource.write("%s   %9.2f %9.2f %9.2f %9.2f\r\n" % (
-            timestamp.strftime("%Y-%m-%d %H:%M:%S.%f %j")[:-3],
+        resource.write("%s %s    %9.2f %9.2f %9.2f %9.2f\r\n" % (
+            timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            timestamp.strftime("%j"),
             components[0],
             components[1],
             components[2],

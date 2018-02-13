@@ -33,7 +33,7 @@ MONTHS_STR = [
     'MAY', 'JUN', 'JUL', 'AUG',
     'SEP', 'OCT', 'NOV', 'DEC'
 ]
-NULL_VALUE = 999999
+NULL_VALUE = 99999.99
 
 # pylint: disable=W0613
 def write(stream, filename, inventory=None, **kwargs):
@@ -67,6 +67,7 @@ def write(stream, filename, inventory=None, **kwargs):
     for component in components:
         if not stream.select(component=component):
             raise ValueError('Missing trace with component %s' % component)
+    stream = lib.order_stream(stream, components=components)
 
     # Only minute variation data is supported in IMFv122
     if stream[0].meta.sampling_rate != 1/60.0:
@@ -107,23 +108,20 @@ def _write_body(stream, resource, inventory):
     # make a copy of the stream before changing it
     # any trace manipulation are done by reference in obspy
     nstream = stream.copy()
-    # sort stream so that we have XYZF order
-    nstream.sort()
-
     for trace in nstream:
         # for each trace, if its a masked array, convert it to an array
         if np.ma.is_masked(trace):
             trace.data = trace.data.filled(fill_value=NULL_VALUE)
 
-    station_code = nstream[0].meta.station
+    station_code = nstream[0].stats.station
     # we don't need any network information so lets dumb down the inventory
     # to the station object
     station = inventory.networks[0].stations[0] if inventory else None
     colatitude10 = (90 - station.latitude) * 10 if station else 0
     longitude10 = station.longitude * 10 if station else 0
 
-    starttime = UTCDateTime(nstream[0].meta.starttime.date)
-    endtime = starttime + 86400.0
+    starttime = UTCDateTime(nstream[0].stats.starttime.date)
+    endtime = starttime + 86400.0 - nstream[0].stats.delta
     nstream.trim(starttime, endtime, pad=True, fill_value=NULL_VALUE)
 
     if len(nstream[0]) != 1440:
@@ -133,9 +131,9 @@ def _write_body(stream, resource, inventory):
     doy = starttime.strftime("%j")
 
     # for each hour block, add a header
-    for hour in xrange(12):
+    for hour in xrange(24):
         resource.write(
-            "%3s %s %s %02d XYZF R OTT %04d%02d 000000 RRRRRRRRRRRRRRRR\n" % (
+            "%3s %s %s %02d XYZF R OTT %04d%04d 000000 RRRRRRRRRRRRRRRR\n" % (
                 station_code,
                 date, doy, hour,
                 colatitude10, longitude10
@@ -143,11 +141,11 @@ def _write_body(stream, resource, inventory):
         )
         for minute in xrange(60):
             idx = hour*60 + minute
-            resource.write("%7d %7d %7d %6d" % format(
-                nstream[0].data[idx],
-                nstream[1].data[idx],
-                nstream[2].data[idx],
-                nstream[3].data[idx]
+            resource.write("%7d %7d %7d %6d" % (
+                nstream[0].data[idx]*10,
+                nstream[1].data[idx]*10,
+                nstream[2].data[idx]*10,
+                nstream[3].data[idx]*10
             ))
-            resource.write("  " if minute % 2 else "\n")
+            resource.write("\n" if minute % 2 else "  ")
                 

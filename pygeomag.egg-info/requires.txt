@@ -1,5 +1,0 @@
-python-dateutil
-obspy
-
-[dev]
-pytest

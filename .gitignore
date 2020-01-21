@@ -1,5 +1,14 @@
-# Ignore python compile code
+# Ignore python compiled
 *pyc
 
+# Ignore setup.py build information
+*egg-info
+/dist/
+/build/
+
+# Ignore pytest caching
+.pytest_cache
+__pycache__
+
 # Ignore visual studio code
-vscode
+.vscode

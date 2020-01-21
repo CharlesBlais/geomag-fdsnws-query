@@ -100,7 +100,7 @@ def fdsnws2geomag():
     # Convert date to starttime and endtime
     reftime = UTCDateTime(args.date)
     starttime = UTCDateTime(reftime.datetime.replace(hour=0, minute=0, second=0, microsecond=0))
-    endtime = UTCDateTime(reftime.datetime.replace(hour=23, minute=59, second=59, microsecond=999))
+    endtime = UTCDateTime(reftime.datetime.replace(hour=23, minute=59, second=59, microsecond=999999))
 
     # Create a handler client
     logging.info("Connecting to %s", args.url)
@@ -112,6 +112,7 @@ def fdsnws2geomag():
     stream = Stream(client.get_waveforms(
         args.network, args.station, ",".join(args.location), ",".join(args.channel),
         starttime, endtime))
+    logging.info("Found stream: %s", str(stream.__str__(extended=True)))
     # Load optional inventory information
     inventory = client.get_stations(network=args.network, station=args.station)
 
@@ -196,7 +197,7 @@ def fdsnws2directory():
     # Convert date to starttime and endtime
     reftime = UTCDateTime(args.date)
     starttime = UTCDateTime(reftime.datetime.replace(hour=0, minute=0, second=0, microsecond=0))
-    endtime = UTCDateTime(reftime.datetime.replace(hour=23, minute=59, second=59, microsecond=999))
+    endtime = UTCDateTime(reftime.datetime.replace(hour=23, minute=59, second=59, microsecond=999999))
 
     # Create a handler client
     logging.info("Connecting to %s", args.url)
@@ -208,6 +209,7 @@ def fdsnws2directory():
     stream = Stream(client.get_waveforms(
         args.network, args.station, ",".join(args.location), ",".join(args.channel),
         starttime, endtime))
+    logging.info("Found stream: %s", str(stream.__str__(extended=True)))
     # Load optional inventory information
     inventory = client.get_stations(network=args.network, station=args.station)
 

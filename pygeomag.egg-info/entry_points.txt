@@ -1,0 +1,4 @@
+[console_scripts]
+fdsnws2directory = pygeomag.command_line:fdsnws2directory
+fdsnws2geomag = pygeomag.command_line:fdsnws2geomag
+

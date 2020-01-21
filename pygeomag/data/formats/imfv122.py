@@ -1,12 +1,14 @@
 '''
 IMFv1.22 format
+===============
 
 Only minute variation data to be used.
     location code of R?
     sampling code of U
 
-NOTE We only support XYZF and we don't bother supporting others in IMFv1.22 conversion
-Format should be deprecated so minimal support.
+..  note::
+    We only support XYZF and we don't bother supporting others in IMFv1.22 conversion
+    Format should be deprecated so minimal support.
 
 Example of header:
 OTT NOV0117 305 00 XYZF R OTT 04462844 000000 RRRRRRRRRRRRRRRR
@@ -18,14 +20,15 @@ R = hard coded (reported = variation)
 2844 = <Station><Longitude> * 10 = longitude
 000000 RRRRRRRRRRRRRRRR = hard coded
 
-NOTE we assume the query was made with day data only (does not expand beyond the day)
+..  note::
+    We assume the query was made with day data only (does not expand beyond the day)
 
-:author: Charles Blais
+..  codeauthor:: Charles Blais
 '''
 
 import numpy as np
 from obspy import UTCDateTime
-import chis.geomag.data.formats.lib as lib
+import pygeomag.data.formats.lib as lib
 
 # constants
 MONTHS_STR = [
@@ -34,8 +37,24 @@ MONTHS_STR = [
     'SEP', 'OCT', 'NOV', 'DEC'
 ]
 NULL_VALUE = 99999.99
+COMPONENTS = ['X', 'Y', 'Z', 'F']
 
-# pylint: disable=W0613
+
+def get_filename(stats):
+    '''
+    Get the IMFv1.22 approved filename according to the stats of a trace.
+    Data type is determined by the location code.
+
+    :type stats: :class:`obspy.Stats`
+    :return: filename
+    '''
+    return "{monthstr}{datetime}.{station}".format(
+        monthstr=MONTHS_STR[stats.starttime.month-1],
+        datetime=stats.starttime.strftime("%d%y"),
+        station=stats.station.upper()
+    )
+
+
 def write(stream, filename, inventory=None, **kwargs):
     '''
     :type stream: ~obspy.Stream
@@ -57,37 +76,31 @@ def write(stream, filename, inventory=None, **kwargs):
         file_opened = False
         resource = filename
 
-    if not lib.is_common_traces(stream, meta_matches=['network', 'station', 'sampling_rate']):
+    if not lib.is_common_traces(stream, stats_matches=['network', 'station', 'sampling_rate']):
         raise ValueError(
             "All traces in the stream must come from the same station and sampling rate"
         )
 
-    # validate required traces
-    components = ['X', 'Y', 'Z', 'F']
-    for component in components:
-        if not stream.select(component=component):
-            raise ValueError('Missing trace with component %s' % component)
-    stream = lib.order_stream(stream, components=components)
+    stream = lib.order_stream(stream, components=COMPONENTS)
 
     # Only minute variation data is supported in IMFv122
-    if stream[0].meta.sampling_rate != 1/60.0:
+    if stream[0].stats.delta != 60.0:
         raise ValueError('Only minute data is supported in IMFv1.22 format')
-    if stream[0].meta.location[0] != 'R':
-        raise ValueError('Only raw or reported is supported in IMFv1.22 format')
 
     # At this state, we know all the traces have the same network and station
     # code.  We extract and find the associated inventory object.
     inv = None
     if inventory is not None:
         inv = inventory.select(
-            network=stream[0].meta.network,
-            station=stream[0].meta.station)
+            network=stream[0].stats.network,
+            station=stream[0].stats.station)
 
     # Write the body
     _write_body(stream, resource, inv)
 
     if file_opened:
         resource.close()
+
 
 def _write_body(stream, resource, inventory):
     '''
@@ -120,6 +133,8 @@ def _write_body(stream, resource, inventory):
     colatitude10 = (90 - station.latitude) * 10 if station else 0
     longitude10 = station.longitude * 10 if station else 0
 
+    # The starttime is the begining of the day in the stream
+    # IAGA2002 files are always daily files
     starttime = UTCDateTime(nstream[0].stats.starttime.date)
     endtime = starttime + 86400.0 - nstream[0].stats.delta
     nstream.trim(starttime, endtime, pad=True, fill_value=NULL_VALUE)
@@ -131,7 +146,7 @@ def _write_body(stream, resource, inventory):
     doy = starttime.strftime("%j")
 
     # for each hour block, add a header
-    for hour in xrange(24):
+    for hour in range(24):
         resource.write(
             "%3s %s %s %02d XYZF R OTT %04d%04d 000000 RRRRRRRRRRRRRRRR\n" % (
                 station_code,
@@ -139,13 +154,12 @@ def _write_body(stream, resource, inventory):
                 colatitude10, longitude10
             )
         )
-        for minute in xrange(60):
+        for minute in range(60):
             idx = hour*60 + minute
             resource.write("%7d %7d %7d %6d" % (
-                nstream[0].data[idx]*10,
-                nstream[1].data[idx]*10,
-                nstream[2].data[idx]*10,
-                nstream[3].data[idx]*10
+                (nstream[0].data[idx] if nstream[0].data[idx] < NULL_VALUE else NULL_VALUE)*10,
+                (nstream[1].data[idx] if nstream[1].data[idx] < NULL_VALUE else NULL_VALUE)*10,
+                (nstream[2].data[idx] if nstream[2].data[idx] < NULL_VALUE else NULL_VALUE)*10,
+                (nstream[3].data[idx] if nstream[3].data[idx] < NULL_VALUE else NULL_VALUE)*10,
             ))
             resource.write("\n" if minute % 2 else "  ")
-                

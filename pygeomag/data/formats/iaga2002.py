@@ -1,5 +1,6 @@
 '''
 IAGA-2002 format
+================
 
 For information regarding this format, please visit:
 
@@ -39,34 +40,65 @@ Data type = based on location code (first letter)
 
 Comment with declination base to be hard coded
 
-:author: Charles Blais
+..  codeauthor:: Charles Blais
 '''
+import logging
 
+# Third-party library
 import numpy as np
-import chis.geomag.data.formats.lib as lib
+from obspy import UTCDateTime
+
+# User-contributed library
+import pygeomag.data.formats.lib as lib
 
 # contants
 DATA_INTERVAL_TYPES = {
-    'M' : '0.125 second',
-    'L' : '1 second',
-    'U' : '1 minute (00:30-01:29)'
+    'M': '0.125 second',
+    'L': '1 second',
+    'U': '1 minute (00:30-01:29)'
 }
 DATA_TYPES = {
-    'R' : 'variation',
-    'D' : 'definitive'
+    'R': 'variation',
+    'D': 'definitive'
 }
-NULL_VALUE = 99999.00
+DATA_INTERVAL_TYPES_FILE = {
+    'L': 'sec',
+    'U': 'min'
+}
+DATA_TYPES_FILE = {
+    'R': 'v',
+    'D': 'd'
+}
 
-# pylint: disable=W0613
+NULL_VALUE = 99999.00
+COMPONENTS = ['X', 'Y', 'Z', 'F']
+
+
+def get_filename(stats):
+    '''
+    Get the IAGA2002 approved filename according to the stats of a trace.
+    Data type is determined by the location code.
+
+    :type stats: :class:`obspy.Stats`
+    :return: filename
+    '''
+    return "{station}{datetime}{data_type}{sample}.{sample}".format(
+        station=stats.station.lower(),
+        datetime=stats.starttime.strftime("%Y%m%d"),
+        data_type=DATA_TYPES_FILE.get(stats.location[0], 'v') if len(stats.location) else 'v',
+        sample=DATA_INTERVAL_TYPES_FILE.get(stats.channel[0], 'raw')
+    )
+
+
 def write(stream, filename, inventory=None, source=None, **kwargs):
     '''
-    :type stream: ~obspy.Stream
+    :type stream: :class:`obspy.Stream`
     :param stream: Stream containing traces, expected channels are orientation XYZF
 
     :type filename: str or resource
     :param filename: filename to write too
 
-    :type inventory: ~obspy.Inventory
+    :type inventory: :class:`obspy.Inventory`
     :param inventory: Inventory with Station found in stream presetn
     '''
 
@@ -79,30 +111,21 @@ def write(stream, filename, inventory=None, source=None, **kwargs):
         file_opened = False
         resource = filename
 
-    # There should 4 traces in the stream
-    if stream.count() != 4:
-        raise ValueError("IAGA2002 format must have 4 components")
-
-    # We only support X, Y, Z, F
-    # validate required traces
-    components = ['X', 'Y', 'Z', 'F']
-    for component in components:
-        if not stream.select(component=component):
-            raise ValueError('Missing trace with component %s' % component)
-    stream = lib.order_stream(stream, components=components)
-
-    if not lib.is_common_traces(stream, meta_matches=['network', 'station', 'sampling_rate']):
+    if not lib.is_common_traces(stream, stats_matches=['network', 'station', 'sampling_rate']):
         raise ValueError(
             "All traces in the stream must come from the same station and sampling rate"
         )
+
+    # Order the streams by components
+    stream = lib.order_stream(stream, components=COMPONENTS)
 
     # At this state, we know all the traces have the same network and station
     # code.  We extract and find the associated inventory object.
     inv = None
     if inventory is not None:
         inv = inventory.select(
-            network=stream[0].meta.network,
-            station=stream[0].meta.station)
+            network=stream[0].stats.network,
+            station=stream[0].stats.station)
 
     _write_header(stream, resource, inv, source)
     # Write the body
@@ -110,6 +133,7 @@ def write(stream, filename, inventory=None, source=None, **kwargs):
 
     if file_opened:
         resource.close()
+
 
 def _write_header(stream, resource, inventory, source):
     '''
@@ -164,20 +188,23 @@ def _get_headers(stream, inventory, source):
     station = inventory.networks[0].stations[0] if inventory else None
 
     # the reported orientation is the combination of all components in stream channels
-    reported = ''.join([trace.meta.channel[-1] for trace in stream]).upper()
+    reported = ''.join([trace.stats.channel[-1] for trace in stream]).upper()
 
     # the data interval type is based on the sampling rate (channel[0])
-    data_interval_type = DATA_INTERVAL_TYPES.get(stream[0].meta.channel[0], '')
+    data_interval_type = DATA_INTERVAL_TYPES.get(stream[0].stats.channel[0], '')
     # the data type is based on the location[0]
-    data_type = DATA_TYPES.get(stream[0].meta.location[0], '')
+    data_type = ''
+    if len(stream[0].stats.location):
+        data_type = DATA_TYPES.get(stream[0].stats.location[0], '')
+
     return [
         " %-23s %-44s|" % ("Format", "IAGA-2002"),
         " %-23s %-44s|" % ("Source of Data", source),
-        " %-23s %-44s|" % ("Station Name", station.site.name),
-        " %-23s %-44s|" % ("IAGA CODE", stream[0].meta.station),
-        " %-23s %-44s|" % ("Geodetic Latitude", "%.3f" % station.latitude),
-        " %-23s %-44s|" % ("Geodetic Longitude", "%.3f" % station.longitude),
-        " %-23s %-44s|" % ("Elevation", "%.3f" % station.elevation),
+        " %-23s %-44s|" % ("Station Name", station.site.name if station is not None else ''),
+        " %-23s %-44s|" % ("IAGA CODE", stream[0].stats.station),
+        " %-23s %-44s|" % ("Geodetic Latitude", "%.3f" % station.latitude if station is not None else 0),
+        " %-23s %-44s|" % ("Geodetic Longitude", "%.3f" % station.longitude if station is not None else 0),
+        " %-23s %-44s|" % ("Elevation", "%.3f" % station.elevation if station is not None else 0),
         " %-23s %-44s|" % ("Reported", reported),
         " %-23s %-44s|" % ("Sensor Orientation", ''),
         " %-23s %-44s|" % ("Digital Sampling", ''),
@@ -199,38 +226,47 @@ def _write_body(stream, resource):
     # make a copy of the stream before changing it
     # any trace manipulation are done by reference in obspy
     nstream = stream.copy()
-    starttime = nstream[0].stats.starttime
+    # The starttime is the begining of the day in the stream
+    # IAGA2002 files are always daily files
+    starttime = UTCDateTime(nstream[0].stats.starttime.date)
+    # The endtime is always the maximum endtime of all the streams
+    # if the trace is a masked array, we convert it to a non-mask array
     endtime = nstream[0].stats.endtime
-    sampling_rate = nstream[0].stats.sampling_rate
-    station = nstream[0].stats.station
-    components = []
     for trace in nstream:
-        starttime = min(trace.meta.starttime, starttime)
         endtime = max(trace.stats.endtime, endtime)
-        components.append(trace.meta.channel[-1])
-        # for each trace, if its a masked array, convert it to an array
         if np.ma.is_masked(trace):
             trace.data = trace.data.filled(fill_value=NULL_VALUE)
 
+    # if the endtime is not for the same day, we have a problem
+    if endtime >= starttime + 86400:
+        raise ValueError("The obspy data stream does not contain data for the same day")
+
+    # Extract other stats information for later
+    station_code = stream[0].stats.station
+    sampling_rate = stream[0].stats.sampling_rate
+
+    # Write the header
     resource.write(
         "DATE       TIME         DOY     %3s%1s      %3s%1s      %3s%1s      %3s%1s   |\r\n" % (
-            station, components[0],
-            station, components[1],
-            station, components[2],
-            station, components[3]
+            station_code, COMPONENTS[0],
+            station_code, COMPONENTS[1],
+            station_code, COMPONENTS[2],
+            station_code, COMPONENTS[3]
         )
     )
 
+    # Trim/Pad the data for our query
     nstream.trim(starttime, endtime, pad=True, fill_value=NULL_VALUE)
 
     # print the information by time starting at starttime
-    for offset in xrange(len(nstream[0])):
+    for offset in range(len(nstream[0])):
         timestamp = starttime + offset/sampling_rate
         components = []
-        for idx in xrange(4):
-            components.append(
-                nstream[idx][offset] if nstream[idx][offset] else NULL_VALUE
-            )
+        for idx in range(4):
+            if nstream[idx][offset] and nstream[idx][offset] < NULL_VALUE:
+                components.append(nstream[idx][offset])
+            else:
+                components.append(NULL_VALUE)
         resource.write("%s %s    %9.2f %9.2f %9.2f %9.2f\r\n" % (
             timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
             timestamp.strftime("%j"),

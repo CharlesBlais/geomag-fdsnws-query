@@ -1,0 +1,24 @@
+Metadata-Version: 2.1
+Name: pygeomag
+Version: 0.0.0
+Summary: FDSNWS based geomagnetic library
+Home-page: http://bitbucket.seismo.nrcan.gc.ca/
+Author: Natural Resources Canada
+Author-email: nrcan.lms.mchisit.rncan@canada.ca
+License: UNKNOWN
+Description: # FDSNWS to geomagnetic formats/structure library
+        
+        Under construction
+Keywords: geomag fdsnws iaga2002 imfv122
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Natural Language :: English
+Classifier: License :: OSI Approved :: GNU General Public License (GPL)
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Description-Content-Type: text/markdown
+Provides-Extra: dev

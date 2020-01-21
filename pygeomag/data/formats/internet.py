@@ -1,5 +1,6 @@
 '''
 Internet format
+===============
 
 Example line in the format:
 
@@ -14,16 +15,17 @@ of the content of the traces from starttime to endtime of all traces.
 
 No StationXML (Inventory) requirements
 
-:author: Charles Blais
+..  codeauthor:: Charles Blais
 '''
 
 import numpy as np
-import chis.geomag.data.formats.lib as lib
+import pygeomag.data.formats.lib as lib
 
 # constants
 NULL_VALUE = 99999.00
+COMPONENTS = ['X', 'Y', 'Z', 'F']
 
-# pylint: disable=W0613
+
 def write(stream, filename, **kwargs):
     '''
     Write data in internet format
@@ -32,7 +34,7 @@ def write(stream, filename, **kwargs):
         - contain X,Y,Z,F components
         - contain the same network, station and sampling rate
 
-    :type stream: ~obspy.Stream
+    :type stream: :class:`obspy.Stream`
     :param stream: Stream containing traces, expected channels are orientation XYZF
 
     :type filename: str or resource
@@ -48,17 +50,12 @@ def write(stream, filename, **kwargs):
         file_opened = False
         resource = filename
 
-    # validate required traces
-    components = ['X', 'Y', 'Z', 'F']
-    for component in components:
-        if not stream.select(component=component):
-            raise ValueError('Missing trace with component %s' % component)
-    stream = lib.order_stream(stream, components=components)
-
-    if not lib.is_common_traces(stream, meta_matches=['network', 'station', 'sampling_rate']):
+    if not lib.is_common_traces(stream, stats_matches=['network', 'station', 'sampling_rate']):
         raise ValueError(
             "All traces in the stream must come from the same station and sampling rate"
         )
+
+    stream = lib.order_stream(stream, components=COMPONENTS)
 
     # Write the body
     _write_body(stream, resource)
@@ -77,34 +74,35 @@ def _write_body(stream, resource):
     # make a copy of the stream before changing it
     # any trace manipulation are done by reference in obspy
     nstream = stream.copy()
-    starttime = nstream[0].meta.starttime
-    endtime = nstream[0].meta.endtime
-    sampling_rate = nstream[0].meta.sampling_rate
-    station = nstream[0].meta.station
+    starttime = nstream[0].stats.starttime
+    endtime = nstream[0].stats.endtime
+    sampling_rate = nstream[0].stats.sampling_rate
+    station_code = nstream[0].stats.station
+
     for trace in nstream:
-        starttime = min(trace.meta.starttime, starttime)
+        starttime = min(trace.stats.starttime, starttime)
         endtime = max(trace.stats.endtime, endtime)
         # for each trace, if its a masked array, convert it to an array
         if np.ma.is_masked(trace):
             trace.data = trace.data.filled(fill_value=NULL_VALUE)
 
     nstream.trim(starttime, endtime, pad=True, fill_value=NULL_VALUE)
-
     # print the information by time starting at starttime
-    for offset in xrange(len(nstream[0])):
+    for offset in range(len(nstream[0])):
         timestamp = starttime + offset/sampling_rate
         timestamp = timestamp.strftime("%Y %j:%H:%M:%S") if sampling_rate < 1 else \
             timestamp.strftime("%Y %j:%H:%M:%S.%f")[:-3]
         components = []
-        for idx in xrange(4):
-            components.append(
-                nstream[idx][offset] if nstream[idx][offset] else NULL_VALUE
-            )
+        for idx in range(4):
+            if nstream[idx][offset] and nstream[idx][offset] < NULL_VALUE:
+                components.append(nstream[idx][offset])
+            else:
+                components.append(NULL_VALUE)
         resource.write("{station} {timestamp} {X} {Y} {Z} {F}\n".format(
-            station=station,
+            station=station_code,
             timestamp=timestamp,
-            X="%.2f"%components[0],
-            Y="%.2f"%components[1],
-            Z="%.2f"%components[2],
-            F="%.2f"%components[3]
+            X="%.2f" % components[0],
+            Y="%.2f" % components[1],
+            Z="%.2f" % components[2],
+            F="%.2f" % components[3]
         ))

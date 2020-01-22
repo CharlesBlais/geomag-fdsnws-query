@@ -125,6 +125,8 @@ def fdsnws2geomag():
     # from the FDSNWS query to are actual request time.  We also merge by
     # location.
     logging.info("Writing informtion to %s", str(args.output))
+    # Correct the endtime with delta of the first trace
+    endtime = UTCDateTime(reftime.datetime) + 86400 - stream[0].stats.delta
     stream.merge_by_location().trim(starttime, endtime).write(
         args.output,
         format=args.format,
@@ -221,6 +223,8 @@ def fdsnws2directory():
     # Before sending the raw data for writing, we need to trim the response
     # from the FDSNWS query to are actual request time.  We also merge by
     # location.
+    # Correct the endtime with delta of the first trace
+    endtime = UTCDateTime(reftime.datetime) + 86400 - stream[0].stats.delta
     stream = stream.merge_by_location().trim(starttime, endtime)
 
     # Loop through the list of stream and generate the unique list of station
